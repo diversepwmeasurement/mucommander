@@ -1,179 +1,191 @@
-name: Stable Build
-
-on:
-  workflow_dispatch:
-
 jobs:
   create-release:
-
-    runs-on: ubuntu-latest
     outputs:
+      full_version: ${{ steps.mucommander_version.outputs.FULL_VERSION }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.mucommander_version.outputs.VERSION }}
-      full_version: ${{ steps.mucommander_version.outputs.FULL_VERSION }}
-
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      id: mucommander_version
+      name: Get version
+      run: 'echo "FULL_VERSION=$(${{github.workspace}}/gradlew -q printFullVersionName)"
+        >> $GITHUB_OUTPUT
 
-      - name : Get version
-        id: mucommander_version
-        run: |
-          echo "FULL_VERSION=$(${{github.workspace}}/gradlew -q printFullVersionName)" >> $GITHUB_OUTPUT
-          echo "VERSION=$(${{github.workspace}}/gradlew -q printVersionName)" >> $GITHUB_OUTPUT
+        echo "VERSION=$(${{github.workspace}}/gradlew -q printVersionName)" >> $GITHUB_OUTPUT
 
-      - name: Create a new release
-        uses: softprops/action-gh-release@v1
-        id: create_release
-        with:
-          name: "${{ steps.mucommander_version.outputs.VERSION }}"
-          tag_name: "${{ steps.mucommander_version.outputs.FULL_VERSION }}"
-          prerelease: false
-          draft: true
-          target_commitish: "${{ github.ref_name }}"
-
-  upload-macos-artifacts:
-
-    runs-on: macos-latest
-    needs: create-release
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Checkout 'release'
-        uses: actions/checkout@v4
-        with:
-          repository: mucommander/release
-          path: release
-          token: ${{ secrets.RELEASE_REPO_TOKEN }}
-
-      - name: Apply 'release' patches
-        run: |
-          git config --global user.name gh-action
-          git config --global user.email gh-action
-          git am release/0001-set-credentials-to-Google-Drive.patch
-          git am release/0002-set-credentials-to-Dropbox.patch
-          git am release/0005-set-credentials-to-OneDrive.patch
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '20'
-          distribution: 'adopt'
-
-      - uses: gradle/actions/setup-gradle@v3
-
-      - name: Build dmg
-        run: ./gradlew dmg
-
-      - name: Upload dmg
-        uses: shogo82148/actions-upload-release-asset@v1
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: "./build/distributions/mucommander-${{ needs.create-release.outputs.full_version }}.dmg"
-          asset_content_type: application/octet-stream
-
+        '
+    - continue-on-error: true
+      id: create_release
+      name: Create a new release
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: true
+        name: ${{ steps.mucommander_version.outputs.VERSION }}
+        prerelease: false
+        tag_name: ${{ steps.mucommander_version.outputs.FULL_VERSION }}
+        target_commitish: ${{ github.ref_name }}
   upload-linux-artifacts:
-
-    runs-on: ubuntu-latest
     needs: create-release
-
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - continue-on-error: true
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - continue-on-error: true
+      uses: actions/setup-java@v4
+      with:
+        distribution: adopt
+        java-version: '20'
+    - continue-on-error: true
+      name: Checkout 'release'
+      uses: actions/checkout@v4
+      with:
+        path: release
+        repository: mucommander/release
+        token: ${{ secrets.RELEASE_REPO_TOKEN }}
+    - continue-on-error: true
+      name: Apply 'release' patches
+      run: 'git config --global user.name gh-action
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '20'
-          distribution: 'adopt'
+        git config --global user.email gh-action
 
-      - name: Checkout 'release'
-        uses: actions/checkout@v4
-        with:
-          repository: mucommander/release
-          path: release
-          token: ${{ secrets.RELEASE_REPO_TOKEN }}
+        git am release/0001-set-credentials-to-Google-Drive.patch
 
-      - name: Apply 'release' patches
-        run: |
-          git config --global user.name gh-action
-          git config --global user.email gh-action
-          git am release/0001-set-credentials-to-Google-Drive.patch
-          git am release/0002-set-credentials-to-Dropbox.patch
+        git am release/0002-set-credentials-to-Dropbox.patch
 
-      - uses: gradle/actions/setup-gradle@v3
+        '
+    - continue-on-error: true
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Build portable, tgz, deb, and rpm
+      run: ./gradlew tgz portable deb rpm
+    - continue-on-error: true
+      name: Upload portable
+      uses: shogo82148/actions-upload-release-asset@v1
+      with:
+        asset_content_type: application/zip
+        asset_path: ./build/distributions/mucommander-${{ needs.create-release.outputs.full_version
+          }}-portable.zip
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+    - continue-on-error: true
+      name: Upload tgz
+      uses: shogo82148/actions-upload-release-asset@v1
+      with:
+        asset_content_type: application/gzip
+        asset_path: ./build/distributions/mucommander-${{ needs.create-release.outputs.full_version
+          }}.tgz
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+    - continue-on-error: true
+      name: Upload deb
+      uses: shogo82148/actions-upload-release-asset@v1
+      with:
+        asset_content_type: application/octet-stream
+        asset_path: ./build/distributions/mucommander_${{ needs.create-release.outputs.full_version
+          }}_amd64.deb
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+    - continue-on-error: true
+      name: Upload rpm
+      uses: shogo82148/actions-upload-release-asset@v1
+      with:
+        asset_content_type: application/octet-stream
+        asset_path: ./build/distributions/mucommander-${{ needs.create-release.outputs.full_version
+          }}.x86_64.rpm
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+  upload-macos-artifacts:
+    needs: create-release
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - continue-on-error: true
+      name: Checkout 'release'
+      uses: actions/checkout@v4
+      with:
+        path: release
+        repository: mucommander/release
+        token: ${{ secrets.RELEASE_REPO_TOKEN }}
+    - continue-on-error: true
+      name: Apply 'release' patches
+      run: 'git config --global user.name gh-action
 
-      - name: Build portable, tgz, deb, and rpm
-        run: ./gradlew tgz portable deb rpm
+        git config --global user.email gh-action
 
-      - name: Upload portable
-        uses: shogo82148/actions-upload-release-asset@v1
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: "./build/distributions/mucommander-${{ needs.create-release.outputs.full_version }}-portable.zip"
-          asset_content_type: application/zip
+        git am release/0001-set-credentials-to-Google-Drive.patch
 
-      - name: Upload tgz
-        uses: shogo82148/actions-upload-release-asset@v1
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: "./build/distributions/mucommander-${{ needs.create-release.outputs.full_version }}.tgz"
-          asset_content_type: application/gzip
+        git am release/0002-set-credentials-to-Dropbox.patch
 
-      - name: Upload deb
-        uses: shogo82148/actions-upload-release-asset@v1
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: "./build/distributions/mucommander_${{ needs.create-release.outputs.full_version }}_amd64.deb"
-          asset_content_type: application/octet-stream
+        git am release/0005-set-credentials-to-OneDrive.patch
 
-      - name: Upload rpm
-        uses: shogo82148/actions-upload-release-asset@v1
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: "./build/distributions/mucommander-${{ needs.create-release.outputs.full_version }}.x86_64.rpm"
-          asset_content_type: application/octet-stream
-
-
+        '
+    - continue-on-error: true
+      uses: actions/setup-java@v4
+      with:
+        distribution: adopt
+        java-version: '20'
+    - continue-on-error: true
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Build dmg
+      run: ./gradlew dmg
+    - continue-on-error: true
+      name: Upload dmg
+      uses: shogo82148/actions-upload-release-asset@v1
+      with:
+        asset_content_type: application/octet-stream
+        asset_path: ./build/distributions/mucommander-${{ needs.create-release.outputs.full_version
+          }}.dmg
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
   upload-windows-artifacts:
-
-    runs-on: windows-latest
     needs: create-release
-
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - continue-on-error: true
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - continue-on-error: true
+      uses: actions/setup-java@v4
+      with:
+        distribution: adopt
+        java-version: '20'
+    - continue-on-error: true
+      name: Checkout 'release'
+      uses: actions/checkout@v4
+      with:
+        path: release
+        repository: mucommander/release
+        token: ${{ secrets.RELEASE_REPO_TOKEN }}
+    - continue-on-error: true
+      name: Apply 'release' patches
+      run: 'git config --global user.name gh-action
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '20'
-          distribution: 'adopt'
+        git config --global user.email gh-action
 
-      - name: Checkout 'release'
-        uses: actions/checkout@v4
-        with:
-          repository: mucommander/release
-          path: release
-          token: ${{ secrets.RELEASE_REPO_TOKEN }}
+        git am release/0001-set-credentials-to-Google-Drive.patch
 
-      - name: Apply 'release' patches
-        run: |
-          git config --global user.name gh-action
-          git config --global user.email gh-action
-          git am release/0001-set-credentials-to-Google-Drive.patch
-          git am release/0002-set-credentials-to-Dropbox.patch
+        git am release/0002-set-credentials-to-Dropbox.patch
 
-      - uses: gradle/actions/setup-gradle@v3
-
-      - name: Build msi
-        run: ./gradlew msi
-
-      - name: Upload msi
-        uses: shogo82148/actions-upload-release-asset@v1
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: "./build/distributions/mucommander-${{ needs.create-release.outputs.version }}.msi"
-          asset_content_type: application/octet-stream
-
+        '
+    - continue-on-error: true
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Build msi
+      run: ./gradlew msi
+    - continue-on-error: true
+      name: Upload msi
+      uses: shogo82148/actions-upload-release-asset@v1
+      with:
+        asset_content_type: application/octet-stream
+        asset_path: ./build/distributions/mucommander-${{ needs.create-release.outputs.version
+          }}.msi
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+name: Stable Build
+on:
+  repository_dispatch:
+    types: trigger-ga___stable.yml
